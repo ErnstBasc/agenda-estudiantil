@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: agenda-db
+    environment:
+      POSTGRES_USER: agenda
+      POSTGRES_PASSWORD: agenda123
+      POSTGRES_DB: agenda_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - agenda-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenda -d agenda_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  microservicio:
+    build: ./microservicio-agenda
+    container_name: agenda-microservicio
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: agenda
+      DB_PASSWORD: agenda123
+      DB_NAME: agenda_db
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - agenda-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/materias || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  gateway:
+    build: ./gateway
+    container_name: agenda-gateway
+    environment:
+      PORT: 8080
+      MICROSERVICIO_URL: http://microservicio:3000
+      JWT_SECRET: cambia-este-secreto
+      AUTH_USER: admin
+      AUTH_PASSWORD: admin123
+    ports:
+      - "8080:8080"
+    depends_on:
+      microservicio:
+        condition: service_healthy
+    networks:
+      - agenda-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+networks:
+  agenda-net:
+    driver: bridge
+
+volumes:
+  pgdata:
